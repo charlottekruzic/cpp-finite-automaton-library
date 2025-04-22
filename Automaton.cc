@@ -682,16 +682,28 @@ bool Automaton::match(const std::string& word) const {
  * language accepted by the other automaton
  */
 bool Automaton::isIncludedIn(const Automaton& other) const {
-  Automaton a = *this;
-  Automaton b = createComplement(other);
-
-  if (b.isLanguageEmpty() && !a.isLanguageEmpty()) {
-    return false;
-  }
-  if (a.hasEmptyIntersectionWith(b) == true) {
+  if (isLanguageEmpty()) {
     return true;
   }
-  return false;
+
+  for (char symbol : alphabet) {
+    if (!other.hasSymbol(symbol)) {
+      Automaton symbol_automaton;
+      symbol_automaton.addState(0);
+      symbol_automaton.addState(1);
+      symbol_automaton.setStateInitial(0);
+      symbol_automaton.setStateFinal(1);
+      symbol_automaton.addSymbol(symbol);
+      symbol_automaton.addTransition(0, symbol, 1);
+      symbol_automaton.addTransition(1, symbol, 1);
+
+      if (!hasEmptyIntersectionWith(symbol_automaton)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -978,7 +990,107 @@ Automaton Automaton::createDeterministic(const Automaton& other) {
  * Create an equivalent minimal automaton with the Moore algorithm
  */
 Automaton Automaton::createMinimalMoore(const Automaton& other) {
-  return other;
+  Automaton deterministic = createDeterministic(other);
+  Automaton complete = createComplete(deterministic);
+
+  if (complete.countStates() <= 1) {
+    return complete;
+  }
+
+  std::vector<std::set<int>> partitions;
+  std::set<int> final_states;
+  std::set<int> non_final_states;
+
+  for (auto& state_pair : complete.set_of_states) {
+    int state = state_pair.first;
+    if (complete.isStateFinal(state)) {
+      final_states.insert(state);
+    } else {
+      non_final_states.insert(state);
+    }
+  }
+
+  if (!final_states.empty()) {
+    partitions.push_back(final_states);
+  }
+
+  if (!non_final_states.empty()) {
+    partitions.push_back(non_final_states);
+  }
+
+  bool changed = true;
+
+  while (changed) {
+    changed = false;
+    std::vector<std::set<int>> new_partitions;
+
+    for (auto& partition : partitions) {
+      if (partition.size() <= 1) {
+        new_partitions.push_back(partition);
+        continue;
+      }
+      std::map<std::vector<int>, std::set<int>> refinement;
+      for (int state : partition) {
+        std::vector<int> signature;
+        for (char symbol : complete.alphabet) {
+          for (auto& transition : complete.set_of_transitions) {
+            if (transition.from == state && transition.symbol == symbol) {
+              for (size_t i = 0; i < partitions.size(); i++) {
+                if (partitions[i].find(transition.to) != partitions[i].end()) {
+                  signature.push_back(i);
+                  break;
+                }
+              }
+              break;
+            }
+          }
+        }
+        refinement[signature].insert(state);
+      }
+
+      if (refinement.size() > 1) {
+        changed = true;
+      }
+
+      for (auto& sub_partition : refinement) {
+        new_partitions.push_back(sub_partition.second);
+      }
+    }
+
+    partitions = new_partitions;
+  }
+
+  Automaton minimal;
+
+  for (char symbol : complete.alphabet) {
+    minimal.addSymbol(symbol);
+  }
+
+  std::map<int, int> state_mapping;
+  for (size_t i = 0; i < partitions.size(); i++) {
+    minimal.addState(i);
+    for (int state : partitions[i]) {
+      if (complete.isStateInitial(state)) {
+        minimal.setStateInitial(i);
+      }
+      if (complete.isStateFinal(state)) {
+        minimal.setStateFinal(i);
+      }
+      state_mapping[state] = i;
+    }
+  }
+
+  for (auto& transition : complete.set_of_transitions) {
+    int from_partition = state_mapping[transition.from];
+    int to_partition = state_mapping[transition.to];
+
+    if (!minimal.hasTransition(from_partition, transition.symbol,
+                               to_partition)) {
+      minimal.addTransition(from_partition, transition.symbol, to_partition);
+    }
+  }
+
+  return minimal;
 }
 
 /**
