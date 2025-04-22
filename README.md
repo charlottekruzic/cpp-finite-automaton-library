@@ -3,7 +3,7 @@
 
 ## 🔎 Overview
 
-This project implements a C++ library for working with finite automata (FA). It provides a comprehensive set of operations for creating, manipulating, and analyzing finite automata, which are fundamental models of computation in theoretical computer science.
+This project implements a C++ library for working with finite automata (FA). It provides a comprehensive set of operations for creating, manipulating, and analyzing finite automata.
 
 ## ⚙️ Features
 
